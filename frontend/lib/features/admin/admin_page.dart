@@ -424,14 +424,43 @@ class _AdminPageState extends State<AdminPage> {
             _buildTextField(
               controller: _pricePerFractionController,
               label: 'Price Per Fraction (ADA)',
-              hint: 'Auto-calculated',
+              hint: 'Auto-calculated (min total: 250 ADA)',
               icon: Icons.currency_exchange,
               keyboardType: TextInputType.number,
               validator: (v) {
                 if (v?.isEmpty == true) return 'Required';
-                if (double.tryParse(v!) == null) return 'Invalid number';
+                final price = double.tryParse(v!);
+                if (price == null) return 'Invalid number';
+                // Check minimum total investment (250 ADA)
+                final totalFractions = int.tryParse(_totalFractionsController.text) ?? 0;
+                final totalValue = price * totalFractions;
+                if (totalValue < 250) {
+                  return 'Min total investment: 250 ADA (current: ${totalValue.toStringAsFixed(0)} ADA)';
+                }
                 return null;
               },
+            ),
+            const SizedBox(height: 8),
+            // Minimum investment notice
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Minimum total investment value: 250 ADA. Buyers can purchase up to 50% of fractions.',
+                      style: TextStyle(color: Colors.amber[200], fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 

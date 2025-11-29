@@ -424,36 +424,70 @@ class _MarketplacePageState extends State<MarketplacePage> {
                 style: const TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Amount: ', style: TextStyle(color: Colors.white)),
-                  IconButton(
-                    icon: const Icon(Icons.remove, color: Colors.white),
-                    onPressed: selectedAmount > 1
-                        ? () => setDialogState(() => selectedAmount--)
-                        : null,
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.amber),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '$selectedAmount',
-                      style: const TextStyle(color: Colors.white, fontSize: 18),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add, color: Colors.white),
-                    onPressed: selectedAmount < listing.fractionsAvailable
-                        ? () => setDialogState(() => selectedAmount++)
-                        : null,
-                  ),
-                ],
+              // Calculate max purchasable (50% of total to prevent single ownership)
+              Builder(
+                builder: (context) {
+                  final maxAllowed = (listing.totalFractions / 2).floor();
+                  final effectiveMax = listing.fractionsAvailable < maxAllowed 
+                      ? listing.fractionsAvailable 
+                      : maxAllowed;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text('Amount: ', style: TextStyle(color: Colors.white)),
+                          IconButton(
+                            icon: const Icon(Icons.remove, color: Colors.white),
+                            onPressed: selectedAmount > 1
+                                ? () => setDialogState(() => selectedAmount--)
+                                : null,
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.amber),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$selectedAmount',
+                              style: const TextStyle(color: Colors.white, fontSize: 18),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add, color: Colors.white),
+                            onPressed: selectedAmount < effectiveMax
+                                ? () => setDialogState(() => selectedAmount++)
+                                : null,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue[300], size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Max: $effectiveMax fractions (50% limit)',
+                              style: TextStyle(color: Colors.blue[200], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
               Text(
@@ -582,6 +616,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
         buyerName: buyerName,
         buyerEmail: buyerEmail,
         buyerPhone: buyerPhone,
+        totalFractions: listing.totalFractions, // For 50% limit validation
         onSuccess: (propertyId, fractionsBought) {
           // Update admin service to record the sale
           adminService.recordSale(propertyId, fractionsBought);

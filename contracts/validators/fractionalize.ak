@@ -7,7 +7,7 @@ use cardano/assets
 use propfi/types.{
   BurnFractions, BurnProperty, Buy, Cancel, FractionalizeRedeemer,
   MarketplaceDatum, MarketplaceRedeemer, MintFractions, MintProperty,
-  MintRedeemer, PropertyDatum, UnlockProperty,
+  MintRedeemer, PropertyDatum, UnlockProperty, UpdateMetadata,
 }
 
 // =============================================================================
@@ -91,6 +91,7 @@ validator cip68_minting {
             },
           )
 
+        // Ensure we mint exactly 1 reference token and >0 user tokens
         ref_token_count == 1 && user_token_count > 0 && has_reference_output
       }
 
@@ -104,7 +105,24 @@ validator cip68_minting {
         let user_token_count =
           assets.quantity_of(tx.mint, policy_id, user_token_name)
 
+        // Allow burning
         ref_token_count <= 0 && user_token_count <= 0
+      }
+
+      UpdateMetadata { property_id } -> {
+        // To update metadata, we must spend the reference token and output it back
+        // with the SAME value but NEW datum.
+        // The minting policy here just needs to ensure no NEW tokens are minted/burned
+        // during an update.
+        
+        let reference_token_name =
+          bytearray.concat(reference_token_prefix, property_id)
+          
+        let ref_token_minted =
+          assets.quantity_of(tx.mint, policy_id, reference_token_name)
+          
+        // No minting allowed during update
+        ref_token_minted == 0
       }
     }
   }

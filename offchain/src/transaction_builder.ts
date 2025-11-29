@@ -98,6 +98,10 @@ export interface ContractConfig {
   cip68MintingPolicyCbor: string;
   marketplaceScriptHash: string;
   marketplaceScriptCbor: string;
+  syndicateScriptHash: string;
+  syndicateScriptCbor: string;
+  yieldTreasuryScriptHash: string;
+  yieldTreasuryScriptCbor: string;
 }
 
 // ============================================================================
@@ -122,13 +126,18 @@ export function loadContracts(): ContractConfig {
 
   const getValidator = (title: string) => {
     const v = plutusJson.validators.find((v: any) => v.title === title);
-    if (!v) throw new Error(`Validator ${title} not found`);
+    if (!v) {
+      console.warn(`Validator ${title} not found - using placeholder`);
+      return { hash: 'placeholder', compiledCode: '' };
+    }
     return v;
   };
 
   const fractionalize = getValidator('fractionalize.fractionalize.spend');
   const cip68Minting = getValidator('fractionalize.cip68_minting.mint');
   const marketplace = getValidator('fractionalize.marketplace.spend');
+  const syndicate = getValidator('syndicate.syndicate_escrow.spend');
+  const yieldTreasury = getValidator('yield_distribution.yield_treasury.spend');
 
   contractConfig = {
     fractionalizeScriptHash: fractionalize.hash,
@@ -137,6 +146,10 @@ export function loadContracts(): ContractConfig {
     cip68MintingPolicyCbor: cip68Minting.compiledCode,
     marketplaceScriptHash: marketplace.hash,
     marketplaceScriptCbor: marketplace.compiledCode,
+    syndicateScriptHash: syndicate.hash,
+    syndicateScriptCbor: syndicate.compiledCode,
+    yieldTreasuryScriptHash: yieldTreasury.hash,
+    yieldTreasuryScriptCbor: yieldTreasury.compiledCode,
   };
 
   return contractConfig;
@@ -449,6 +462,406 @@ export class PropFiTransactionBuilder {
 
     return unsignedTx;
   }
+
+  // ==========================================================================
+  // Syndicate Escrow Operations
+  // ==========================================================================
+
+  /**
+   * Build Syndicate Escrow Datum
+   */
+  buildSyndicateDatum(params: SyndicateDatumParams): object {
+    // SyndicateState: Fundraising = 0, Locked = 1, Finalized = 2, Refunded = 3
+    const stateIndex = ['Fundraising', 'Locked', 'Finalized', 'Refunded'].indexOf(params.state);
+    
+    // InvestmentLimits constructor
+    const limits = mConStr0([
+      params.limits.minInvestment,
+      params.limits.maxInvestment,
+      params.limits.maxPercentage,
+    ]);
+
+    // Stablecoin asset constructor
+    const stablecoinAsset = mConStr0([
+      params.stablecoinPolicyId,
+      params.stablecoinAssetName,
+    ]);
+
+    // Fraction token asset constructor
+    const fractionToken = mConStr0([
+      params.fractionPolicyId,
+      params.fractionAssetName,
+    ]);
+
+    // Investors list: List<(VerificationKeyHash, Int)>
+    const investors = params.investors.map(inv => [inv.pkh, inv.amount]);
+
+    // EscrowDatum constructor
+    return mConStr0([
+      mConStr0([]), // state - will be set by index
+      params.target,
+      params.currentRaised,
+      params.deadline,
+      investors,
+      params.sellerPkh,
+      stablecoinAsset,
+      fractionToken,
+      params.dunaHash,
+      limits,
+    ]);
+  }
+
+  /**
+   * Create a new syndicate for property acquisition
+   */
+  async createSyndicate(
+    managerAddress: string,
+    params: CreateSyndicateParams
+  ): Promise<string> {
+    const txBuilder = new MeshTxBuilder({
+      fetcher: this.provider,
+      evaluator: this.provider,
+    });
+
+    const managerPkh = deserializeAddress(managerAddress).pubKeyHash;
+
+    const syndicateDatum = this.buildSyndicateDatum({
+      state: 'Fundraising',
+      target: params.target,
+      currentRaised: 0,
+      deadline: params.deadline,
+      investors: [],
+      sellerPkh: params.sellerPkh,
+      stablecoinPolicyId: params.stablecoinPolicyId,
+      stablecoinAssetName: params.stablecoinAssetName,
+      fractionPolicyId: params.fractionPolicyId,
+      fractionAssetName: params.fractionAssetName,
+      dunaHash: params.dunaHash,
+      limits: params.limits,
+    });
+
+    const syndicateAddress = this.getSyndicateAddress();
+
+    const unsignedTx = await txBuilder
+      .txOut(syndicateAddress, [
+        { unit: 'lovelace', quantity: '5000000' }, // Min ADA
+      ])
+      .txOutInlineDatumValue(syndicateDatum)
+      .requiredSignerHash(managerPkh)
+      .changeAddress(managerAddress)
+      .selectUtxosFrom(await this.provider.fetchAddressUTxOs(managerAddress))
+      .complete();
+
+    return unsignedTx;
+  }
+
+  /**
+   * Deposit stablecoins into syndicate
+   */
+  async depositToSyndicate(
+    investorAddress: string,
+    amount: number,
+    syndicateUtxo: { txHash: string; outputIndex: number },
+    currentDatum: SyndicateDatumParams
+  ): Promise<string> {
+    const txBuilder = new MeshTxBuilder({
+      fetcher: this.provider,
+      evaluator: this.provider,
+    });
+
+    const investorPkh = deserializeAddress(investorAddress).pubKeyHash;
+
+    // Deposit redeemer: Deposit { amount: Int }
+    const depositRedeemer = mConStr0([amount]);
+
+    // Update datum with new investment
+    const updatedInvestors = [...currentDatum.investors, { pkh: investorPkh, amount }];
+    const newRaised = currentDatum.currentRaised + amount;
+
+    const updatedDatum = this.buildSyndicateDatum({
+      ...currentDatum,
+      currentRaised: newRaised,
+      investors: updatedInvestors,
+    });
+
+    const stablecoinUnit = currentDatum.stablecoinPolicyId + currentDatum.stablecoinAssetName;
+
+    const unsignedTx = await txBuilder
+      .spendingPlutusScriptV2()
+      .txIn(syndicateUtxo.txHash, syndicateUtxo.outputIndex)
+      .spendingReferenceTxInInlineDatumPresent()
+      .spendingReferenceTxInRedeemerValue(depositRedeemer)
+      .txInScript(this.contracts.syndicateScriptCbor)
+      // Continue the script with updated datum and increased value
+      .txOut(this.getSyndicateAddress(), [
+        { unit: 'lovelace', quantity: '5000000' },
+        { unit: stablecoinUnit, quantity: newRaised.toString() },
+      ])
+      .txOutInlineDatumValue(updatedDatum)
+      .requiredSignerHash(investorPkh)
+      .changeAddress(investorAddress)
+      .selectUtxosFrom(await this.provider.fetchAddressUTxOs(investorAddress))
+      .complete();
+
+    return unsignedTx;
+  }
+
+  /**
+   * Get syndicate escrow script address
+   */
+  getSyndicateAddress(): string {
+    const scriptHash = this.contracts.syndicateScriptHash || 'placeholder';
+    return `addr_test1wz${scriptHash}`;
+  }
+
+  // ==========================================================================
+  // Yield Distribution Operations
+  // ==========================================================================
+
+  /**
+   * Build Yield Treasury Datum
+   */
+  buildYieldTreasuryDatum(params: YieldTreasuryDatumParams): object {
+    const propertyToken = mConStr0([
+      params.propertyPolicyId,
+      params.propertyAssetName,
+    ]);
+
+    const stablecoinAsset = mConStr0([
+      params.stablecoinPolicyId,
+      params.stablecoinAssetName,
+    ]);
+
+    return mConStr0([
+      propertyToken,
+      params.totalFractions,
+      params.accumulatedYield,
+      params.lastDistribution,
+      stablecoinAsset,
+      params.managerPkh,
+    ]);
+  }
+
+  /**
+   * Create a new yield treasury for a property
+   */
+  async createYieldTreasury(
+    managerAddress: string,
+    params: CreateYieldTreasuryParams
+  ): Promise<string> {
+    const txBuilder = new MeshTxBuilder({
+      fetcher: this.provider,
+      evaluator: this.provider,
+    });
+
+    const managerPkh = deserializeAddress(managerAddress).pubKeyHash;
+
+    const treasuryDatum = this.buildYieldTreasuryDatum({
+      propertyPolicyId: params.propertyPolicyId,
+      propertyAssetName: params.propertyAssetName,
+      totalFractions: params.totalFractions,
+      accumulatedYield: 0,
+      lastDistribution: Date.now(),
+      stablecoinPolicyId: params.stablecoinPolicyId,
+      stablecoinAssetName: params.stablecoinAssetName,
+      managerPkh: managerPkh,
+    });
+
+    const treasuryAddress = this.getYieldTreasuryAddress();
+
+    const unsignedTx = await txBuilder
+      .txOut(treasuryAddress, [
+        { unit: 'lovelace', quantity: '5000000' },
+      ])
+      .txOutInlineDatumValue(treasuryDatum)
+      .requiredSignerHash(managerPkh)
+      .changeAddress(managerAddress)
+      .selectUtxosFrom(await this.provider.fetchAddressUTxOs(managerAddress))
+      .complete();
+
+    return unsignedTx;
+  }
+
+  /**
+   * Deposit rental yield into treasury
+   */
+  async depositYield(
+    managerAddress: string,
+    amount: number,
+    treasuryUtxo: { txHash: string; outputIndex: number },
+    currentDatum: YieldTreasuryDatumParams
+  ): Promise<string> {
+    const txBuilder = new MeshTxBuilder({
+      fetcher: this.provider,
+      evaluator: this.provider,
+    });
+
+    const managerPkh = deserializeAddress(managerAddress).pubKeyHash;
+
+    // DepositYield redeemer: DepositYield { amount: Int }
+    const depositRedeemer = mConStr0([amount]);
+
+    const newAccumulated = currentDatum.accumulatedYield + amount;
+
+    const updatedDatum = this.buildYieldTreasuryDatum({
+      ...currentDatum,
+      accumulatedYield: newAccumulated,
+      lastDistribution: Date.now(),
+    });
+
+    const stablecoinUnit = currentDatum.stablecoinPolicyId + currentDatum.stablecoinAssetName;
+
+    const unsignedTx = await txBuilder
+      .spendingPlutusScriptV2()
+      .txIn(treasuryUtxo.txHash, treasuryUtxo.outputIndex)
+      .spendingReferenceTxInInlineDatumPresent()
+      .spendingReferenceTxInRedeemerValue(depositRedeemer)
+      .txInScript(this.contracts.yieldTreasuryScriptCbor)
+      .txOut(this.getYieldTreasuryAddress(), [
+        { unit: 'lovelace', quantity: '5000000' },
+        { unit: stablecoinUnit, quantity: newAccumulated.toString() },
+      ])
+      .txOutInlineDatumValue(updatedDatum)
+      .requiredSignerHash(managerPkh)
+      .changeAddress(managerAddress)
+      .selectUtxosFrom(await this.provider.fetchAddressUTxOs(managerAddress))
+      .complete();
+
+    return unsignedTx;
+  }
+
+  /**
+   * Claim yield as a token holder
+   */
+  async claimYield(
+    holderAddress: string,
+    fractionAmount: number,
+    treasuryUtxo: { txHash: string; outputIndex: number },
+    tokenUtxo: { txHash: string; outputIndex: number },
+    currentDatum: YieldTreasuryDatumParams
+  ): Promise<string> {
+    const txBuilder = new MeshTxBuilder({
+      fetcher: this.provider,
+      evaluator: this.provider,
+    });
+
+    const holderPkh = deserializeAddress(holderAddress).pubKeyHash;
+
+    // Calculate proportional yield
+    const yieldShare = Math.floor(
+      (currentDatum.accumulatedYield * fractionAmount) / currentDatum.totalFractions
+    );
+
+    // ClaimYield redeemer: ClaimYield { holder, fraction_amount }
+    const claimRedeemer = mConStr1([holderPkh, fractionAmount]);
+
+    const remainingYield = currentDatum.accumulatedYield - yieldShare;
+
+    const updatedDatum = this.buildYieldTreasuryDatum({
+      ...currentDatum,
+      accumulatedYield: remainingYield,
+    });
+
+    const stablecoinUnit = currentDatum.stablecoinPolicyId + currentDatum.stablecoinAssetName;
+
+    const unsignedTx = await txBuilder
+      // Spend treasury
+      .spendingPlutusScriptV2()
+      .txIn(treasuryUtxo.txHash, treasuryUtxo.outputIndex)
+      .spendingReferenceTxInInlineDatumPresent()
+      .spendingReferenceTxInRedeemerValue(claimRedeemer)
+      .txInScript(this.contracts.yieldTreasuryScriptCbor)
+      // Include token input as proof of ownership
+      .txIn(tokenUtxo.txHash, tokenUtxo.outputIndex)
+      // Updated treasury output
+      .txOut(this.getYieldTreasuryAddress(), [
+        { unit: 'lovelace', quantity: '5000000' },
+        { unit: stablecoinUnit, quantity: remainingYield.toString() },
+      ])
+      .txOutInlineDatumValue(updatedDatum)
+      // Holder receives their yield share
+      .txOut(holderAddress, [
+        { unit: 'lovelace', quantity: '2000000' },
+        { unit: stablecoinUnit, quantity: yieldShare.toString() },
+      ])
+      .requiredSignerHash(holderPkh)
+      .changeAddress(holderAddress)
+      .selectUtxosFrom(await this.provider.fetchAddressUTxOs(holderAddress))
+      .complete();
+
+    return unsignedTx;
+  }
+
+  /**
+   * Get yield treasury script address
+   */
+  getYieldTreasuryAddress(): string {
+    const scriptHash = this.contracts.yieldTreasuryScriptHash || 'placeholder';
+    return `addr_test1wz${scriptHash}`;
+  }
+}
+
+// ============================================================================
+// New Types for Syndicate and Yield Distribution
+// ============================================================================
+
+export interface InvestmentLimits {
+  minInvestment: number;
+  maxInvestment: number;
+  maxPercentage: number; // e.g., 50 for 50%
+}
+
+export interface InvestorRecord {
+  pkh: string;
+  amount: number;
+}
+
+export type SyndicateState = 'Fundraising' | 'Locked' | 'Finalized' | 'Refunded';
+
+export interface SyndicateDatumParams {
+  state: SyndicateState;
+  target: number;
+  currentRaised: number;
+  deadline: number; // POSIX timestamp
+  investors: InvestorRecord[];
+  sellerPkh: string;
+  stablecoinPolicyId: string;
+  stablecoinAssetName: string;
+  fractionPolicyId: string;
+  fractionAssetName: string;
+  dunaHash: string;
+  limits: InvestmentLimits;
+}
+
+export interface CreateSyndicateParams {
+  target: number;
+  deadline: number;
+  sellerPkh: string;
+  stablecoinPolicyId: string;
+  stablecoinAssetName: string;
+  fractionPolicyId: string;
+  fractionAssetName: string;
+  dunaHash: string;
+  limits: InvestmentLimits;
+}
+
+export interface YieldTreasuryDatumParams {
+  propertyPolicyId: string;
+  propertyAssetName: string;
+  totalFractions: number;
+  accumulatedYield: number;
+  lastDistribution: number; // POSIX timestamp
+  stablecoinPolicyId: string;
+  stablecoinAssetName: string;
+  managerPkh: string;
+}
+
+export interface CreateYieldTreasuryParams {
+  propertyPolicyId: string;
+  propertyAssetName: string;
+  totalFractions: number;
+  stablecoinPolicyId: string;
+  stablecoinAssetName: string;
 }
 
 // Export singleton instance

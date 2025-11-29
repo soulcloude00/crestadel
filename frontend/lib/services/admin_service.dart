@@ -329,6 +329,12 @@ class AdminService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Minimum total investment value in ADA
+  static const double minInvestmentAda = 250.0;
+  
+  /// Maximum percentage of fractions a single buyer can purchase
+  static const double maxPurchasePercentage = 0.50; // 50%
+
   /// Add a new property (saves locally as draft)
   Future<Property> addProperty({
     required String name,
@@ -341,6 +347,15 @@ class AdminService extends ChangeNotifier {
     required String ownerWalletAddress,
     String? legalDocumentCID,
   }) async {
+    // Validate minimum investment value (250 ADA)
+    final totalInvestmentValue = pricePerFraction * totalFractions;
+    if (totalInvestmentValue < minInvestmentAda) {
+      throw Exception(
+        'Minimum total investment value is $minInvestmentAda ADA. '
+        'Current: ${totalInvestmentValue.toStringAsFixed(2)} ADA'
+      );
+    }
+    
     final property = Property(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,

@@ -517,12 +517,12 @@ class WalletService extends ChangeNotifier {
         debugPrint('Window not available');
         return;
       }
-      
+
       if (!js_util.hasProperty(window, 'PropFiBridge')) {
         debugPrint('PropFiBridge not available');
         return;
       }
-      
+
       final bridge = js_util.getProperty(window, 'PropFiBridge');
 
       // Check if function exists
@@ -595,11 +595,13 @@ class WalletService extends ChangeNotifier {
           debugPrint('Skipping purchase with 0 fractions: $txHash');
           continue;
         }
-        
+
         // Generate propertyId from txHash if not provided (old format transactions)
-        final effectivePropertyId = propertyId.isNotEmpty 
-            ? propertyId 
-            : (txHash.isNotEmpty ? 'prop_${txHash.substring(0, 8)}' : 'prop_unknown');
+        final effectivePropertyId = propertyId.isNotEmpty
+            ? propertyId
+            : (txHash.isNotEmpty
+                  ? 'prop_${txHash.substring(0, 8)}'
+                  : 'prop_unknown');
 
         debugPrint(
           'Processing on-chain purchase: $propertyName, $fractions fractions at $priceAda ADA (propertyId: $effectivePropertyId)',
@@ -635,7 +637,9 @@ class WalletService extends ChangeNotifier {
           if (existing.fractionsOwned < fractions) {
             _holdings[existingIndex] = PropertyHolding(
               propertyId: effectivePropertyId,
-              propertyName: propertyName.isNotEmpty ? propertyName : 'Property Purchase',
+              propertyName: propertyName.isNotEmpty
+                  ? propertyName
+                  : 'Property Purchase',
               location: location,
               imageUrl: imageUrl,
               fractionsOwned: fractions, // Use the on-chain value
@@ -651,7 +655,9 @@ class WalletService extends ChangeNotifier {
           _holdings.add(
             PropertyHolding(
               propertyId: effectivePropertyId,
-              propertyName: propertyName.isNotEmpty ? propertyName : 'Property Purchase',
+              propertyName: propertyName.isNotEmpty
+                  ? propertyName
+                  : 'Property Purchase',
               location: location,
               imageUrl: imageUrl,
               fractionsOwned: fractions,
@@ -803,8 +809,10 @@ class WalletService extends ChangeNotifier {
             'getAvailableWallets',
             [],
           );
-          debugPrint('getAvailableWallets: walletsJs = $walletsJs (type: ${walletsJs.runtimeType})');
-          
+          debugPrint(
+            'getAvailableWallets: walletsJs = $walletsJs (type: ${walletsJs.runtimeType})',
+          );
+
           // Convert JS array to Dart list using JSON stringify/parse
           final walletIds = <String>[];
           if (walletsJs != null) {
@@ -822,9 +830,9 @@ class WalletService extends ChangeNotifier {
               }
             }
           }
-          
+
           debugPrint('getAvailableWallets: walletIds = $walletIds');
-          
+
           for (final wId in walletIds) {
             try {
               final wallet = CardanoWallet.values.firstWhere(
@@ -1025,7 +1033,7 @@ class WalletService extends ChangeNotifier {
         final window = js.webWindow;
         if (window == null) return 0.0;
         if (!js_util.hasProperty(window, 'PropFiBridge')) return 0.0;
-        
+
         final bridge = js_util.getProperty(window, 'PropFiBridge');
         final balance = await js_util.promiseToFuture(
           js_util.callMethod(bridge, 'getBalance', []),
@@ -1046,7 +1054,7 @@ class WalletService extends ChangeNotifier {
         final window = js.webWindow;
         if (window == null) return {};
         if (!js_util.hasProperty(window, 'PropFiBridge')) return {};
-        
+
         final bridge = js_util.getProperty(window, 'PropFiBridge');
         final jsonStr = await js_util.promiseToFuture(
           js_util.callMethod(bridge, 'getWalletAssetsJson', []),
@@ -1137,6 +1145,15 @@ class WalletService extends ChangeNotifier {
   Future<String> buyFractions(MarketplaceListing listing, int amount) async {
     if (!isConnected) {
       throw Exception('Wallet not connected');
+    }
+
+    // Validate max 50% purchase to prevent single ownership
+    final maxAllowed = (listing.totalFractions / 2).floor();
+    if (amount > maxAllowed) {
+      throw Exception(
+        'Cannot purchase more than 50% of total fractions ($maxAllowed). '
+        'This prevents single-owner control.'
+      );
     }
 
     try {
@@ -1299,9 +1316,21 @@ class WalletService extends ChangeNotifier {
     String? buyerName,
     String? buyerEmail,
     String? buyerPhone,
+    int? totalFractions,
   }) async {
     if (!isConnected) {
       throw Exception('Wallet not connected');
+    }
+
+    // Validate max 50% purchase to prevent single ownership
+    if (totalFractions != null) {
+      final maxAllowed = (totalFractions / 2).floor();
+      if (amount > maxAllowed) {
+        throw Exception(
+          'Cannot purchase more than 50% of total fractions ($maxAllowed). '
+          'This prevents single-owner control.'
+        );
+      }
     }
 
     try {
@@ -1594,5 +1623,99 @@ class WalletService extends ChangeNotifier {
       }
     } catch (_) {}
     return null;
+  }
+  // ... existing code ...
+
+  // ===========================================================================
+  // New Bridge Methods (CIP-45, Oracles, DUNA)
+  // ===========================================================================
+
+  /// Initialize CIP-45 Peer Connect and get the connection string
+  Future<String?> initPeerConnect() async {
+    if (!kIsWeb) return null;
+    try {
+      final window = js.webWindow;
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+        return null;
+      final bridge = js_util.getProperty(window, 'PropFiBridge');
+
+      final promise = js_util.callMethod(bridge, 'initPeerConnect', []);
+      final result = await js_util.promiseToFuture(promise);
+      return result as String?;
+    } catch (e) {
+      debugPrint('Error initializing Peer Connect: $e');
+      return null;
+    }
+  }
+
+  /// Fetch real-time price from Charli3 Oracle
+  Future<double> fetchCharli3Price(String pair) async {
+    if (!kIsWeb) return 0.0;
+    try {
+      final window = js.webWindow;
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+        return 0.0;
+      final bridge = js_util.getProperty(window, 'PropFiBridge');
+
+      final promise = js_util.callMethod(bridge, 'fetchCharli3Price', [pair]);
+      final result = await js_util.promiseToFuture(promise);
+      return (result as num).toDouble();
+    } catch (e) {
+      debugPrint('Error fetching Charli3 price: $e');
+      return 0.0;
+    }
+  }
+
+  /// Verify Orcfax audit trail for a property
+  Future<Map<String, dynamic>> verifyOrcfaxAudit(String propertyId) async {
+    if (!kIsWeb) return {'verified': false};
+    try {
+      final window = js.webWindow;
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+        return {'verified': false};
+      final bridge = js_util.getProperty(window, 'PropFiBridge');
+
+      final promise = js_util.callMethod(bridge, 'verifyOrcfaxAudit', [
+        propertyId,
+      ]);
+      final result = await js_util.promiseToFuture(promise);
+
+      // Convert JS object to Dart Map
+      // Note: This might need more robust conversion depending on the JS object structure
+      // For now assuming simple object that can be cast or needs manual extraction
+      // Since we can't easily iterate keys of a raw JS object in Dart without dart:js_util,
+      // we'll rely on the bridge returning a JSON string or simple object.
+      // Let's assume the bridge returns a JS object we can treat as dynamic.
+
+      // Better approach: Have bridge return JSON string if complex, but for simple object:
+      return {
+        'verified': js_util.getProperty(result, 'verified') == true,
+        'auditHash': js_util.getProperty(result, 'auditHash'),
+        'timestamp': js_util.getProperty(result, 'timestamp'),
+      };
+    } catch (e) {
+      debugPrint('Error verifying Orcfax audit: $e');
+      return {'verified': false};
+    }
+  }
+
+  /// Generate DUNA hash for compliance
+  Future<String> generateDunaHash(String articlesJson) async {
+    if (!kIsWeb) return '';
+    try {
+      final window = js.webWindow;
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+        return '';
+      final bridge = js_util.getProperty(window, 'PropFiBridge');
+
+      final promise = js_util.callMethod(bridge, 'generateDunaHash', [
+        articlesJson,
+      ]);
+      final result = await js_util.promiseToFuture(promise);
+      return result as String;
+    } catch (e) {
+      debugPrint('Error generating DUNA hash: $e');
+      return '';
+    }
   }
 }

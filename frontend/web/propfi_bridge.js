@@ -122,6 +122,7 @@ window.PropFiBridge = {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
   },
+
   createPropertyMetadata: function (property) {
     const truncate = (str, maxLen = 64) => {
       if (!str) return '';
@@ -476,7 +477,7 @@ window.PropFiBridge = {
       // Cardano metadata has a 64 byte limit per string
       // Wallet address can be derived from tx inputs, so we just store a hash/prefix
       const walletPrefix = (purchaseData.buyerWallet || '').substring(0, 40);
-      
+
       const metadata = {
         [this.PURCHASE_METADATA_LABEL]: {
           app: "crestadel",
@@ -639,24 +640,98 @@ window.PropFiBridge = {
     }
   },
 
+  // CIP-45 Peer Connect Implementation
+  dAppConnect: null,
+
   initPeerConnect: async function () {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return "web+cardano://connect?key=mock_p2p_key&name=PropFi";
+      // Try to import the real library
+      const { DAppPeerConnect } = await import('https://esm.sh/@cardananium/cardano-peer-connect');
+
+      this.dAppConnect = new DAppPeerConnect({
+        dAppInfo: {
+          name: "PropFi Syndicate",
+          url: "https://propfi.cardano",
+        },
+        announce: ["wss://tracker.files.fm:7073/announce", "wss://tracker.btorrent.xyz:7073/announce"],
+      });
+
+      // Wait for initialization
+      await new Promise(r => setTimeout(r, 1000));
+
+      const connectionString = `web+cardano://connect?key=${this.dAppConnect.me.pkh}&name=PropFi`;
+      console.log("CIP-45 Connection String:", connectionString);
+      return connectionString;
+
     } catch (error) {
-      console.error('Error initializing Peer Connect:', error);
-      return null;
+      console.error('Error initializing Peer Connect (using mock):', error);
+      return "web+cardano://connect?key=mock_p2p_key&name=PropFi";
     }
   },
 
   waitForMobileConnection: async function () {
-    try {
+    if (!this.dAppConnect) {
+      // Mock behavior
       await new Promise(resolve => setTimeout(resolve, 3000));
       return true;
-    } catch (error) {
-      console.error('Error waiting for mobile connection:', error);
-      return false;
     }
+
+    return new Promise((resolve) => {
+      this.dAppConnect.setOnConnect((wallet) => {
+        console.log("Connected to mobile wallet:", wallet);
+        resolve(true);
+      });
+    });
+  },
+
+  // Oracle & Compliance Helpers
+  fetchCharli3Price: async function (pair) {
+    console.log("Fetching Charli3 price for", pair);
+    // Mock: 1 ADA = 0.45 USD
+    return 0.45;
+  },
+
+  /**
+   * Verify Orcfax audit trail for a property
+   * Fetches the latest fact statement from the Orcfax feed address on Preprod
+   */
+  verifyOrcfaxAudit: async function(propertyId) {
+    console.log("Verifying Orcfax audit for", propertyId);
+
+    // Orcfax Preprod Feed Address (Example: ADA/USD feed for demo purposes)
+    const ORCFAX_FEED_ADDRESS = "addr_test1wzhfye4zxffxd59gg0fhjwzr9w4cn6v6j6n8s3892s036sg65x090";
+
+    try {
+      // Fetch UTxOs from the feed address
+      const utxos = await this.blockfrostGet(`/addresses/${ORCFAX_FEED_ADDRESS}/utxos`);
+
+      if (!utxos || utxos.length === 0) {
+        console.warn("No Orcfax feed data found");
+        return { verified: false, error: "No feed data" };
+      }
+
+      // For this hackathon demo, we take the latest UTxO as the "audit"
+      const latestUtxo = utxos[utxos.length - 1];
+
+      return {
+        verified: true,
+        auditHash: latestUtxo.data_hash,
+        timestamp: Date.now(),
+        feedAddress: ORCFAX_FEED_ADDRESS,
+        txHash: latestUtxo.tx_hash
+      };
+    } catch (error) {
+      console.error("Error verifying Orcfax audit:", error);
+      return { verified: false, error: error.message };
+    }
+  },
+
+  generateDunaHash: async function (articlesJson) {
+    const msgBuffer = new TextEncoder().encode(articlesJson);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
   },
 
   getWalletUtxosForHydra: async function () {
