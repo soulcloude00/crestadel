@@ -416,30 +416,85 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
+  bool _isRefreshing = false;
+
+  Future<void> _refreshPortfolio(WalletService walletService) async {
+    setState(() => _isRefreshing = true);
+    try {
+      await walletService.fetchOnChainPurchases();
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
   Widget _buildPortfolioTab(BuildContext context, WalletService walletService) {
     final holdings = walletService.holdings;
-    if (holdings.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.apartment_outlined, size: 64, color: Colors.grey[700]),
-            const SizedBox(height: 16),
-            Text('No properties yet', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
-            const SizedBox(height: 8),
-            Text('Start investing to build your portfolio', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-          ],
+    
+    return Column(
+      children: [
+        // Refresh button header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Text('YOUR HOLDINGS', style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 11)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _isRefreshing ? null : () => _refreshPortfolio(walletService),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _isRefreshing
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor))
+                          : const Icon(Icons.refresh, color: AppTheme.primaryColor, size: 14),
+                      const SizedBox(width: 6),
+                      Text(_isRefreshing ? 'Syncing...' : 'Refresh', style: const TextStyle(color: AppTheme.primaryColor, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: holdings.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) return _buildAllocationChart(holdings);
-        return _buildPortfolioItem(holdings[index - 1]);
-      },
+        // Holdings list
+        Expanded(
+          child: holdings.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.apartment_outlined, size: 64, color: Colors.grey[700]),
+                      const SizedBox(height: 16),
+                      Text('No properties yet', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('Start investing to build your portfolio', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: () => _refreshPortfolio(walletService),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Sync Holdings'),
+                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.black),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: holdings.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == 0) return _buildAllocationChart(holdings);
+                    return _buildPortfolioItem(holdings[index - 1]);
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -549,27 +604,186 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 
   Widget _buildActivityTab(BuildContext context) {
-    final activities = [
-      {'type': 'buy', 'title': 'Purchased 25 fractions', 'property': 'Tokyo Sky Residence', 'time': '2 hours ago', 'amount': '+25'},
-      {'type': 'yield', 'title': 'Yield received', 'property': 'Dubai Marina Villa', 'time': '1 day ago', 'amount': '+\$45.00'},
-      {'type': 'buy', 'title': 'Purchased 10 fractions', 'property': 'London Mayfair Apt', 'time': '3 days ago', 'amount': '+10'},
-      {'type': 'sell', 'title': 'Sold 5 fractions', 'property': 'Paris Champs-Élysées', 'time': '1 week ago', 'amount': '-5'},
-      {'type': 'yield', 'title': 'Yield received', 'property': 'New York Penthouse', 'time': '2 weeks ago', 'amount': '+\$120.00'},
+    final walletService = Provider.of<WalletService>(context);
+    final transactions = walletService.transactionHistory;
+    
+    // Combine real transactions with demo activities
+    final activities = <Map<String, dynamic>>[
+      ...transactions.map((t) => {
+        'type': t.type == TransactionType.buy ? 'buy' : (t.type == TransactionType.sell ? 'sell' : 'yield'),
+        'title': t.type == TransactionType.buy ? 'Purchased ${t.fractions} fractions' : 
+                 t.type == TransactionType.sell ? 'Sold ${t.fractions} fractions' : 'Yield received',
+        'property': t.propertyName ?? 'Property',
+        'time': _formatTimeAgo(t.timestamp),
+        'amount': t.type == TransactionType.buy ? '+${t.fractions}' : 
+                  t.type == TransactionType.sell ? '-${t.fractions}' : '+\$${t.amount.toStringAsFixed(2)}',
+        'txHash': t.txHash,
+      }),
     ];
+    
+    // Add demo data if no real transactions
+    if (activities.isEmpty) {
+      activities.addAll([
+        {'type': 'buy', 'title': 'Purchased 25 fractions', 'property': 'Tokyo Sky Residence', 'time': '2 hours ago', 'amount': '+25', 'txHash': null},
+        {'type': 'yield', 'title': 'Yield received', 'property': 'Dubai Marina Villa', 'time': '1 day ago', 'amount': '+\$45.00', 'txHash': null},
+      ]);
+    }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: activities.length,
-      itemBuilder: (context, index) {
-        final activity = activities[index];
-        final isBuy = activity['type'] == 'buy';
-        final isYield = activity['type'] == 'yield';
-        
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: AppTheme.glassDecoration,
+    return Column(
+      children: [
+        // Header with See All
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
+            children: [
+              Text('TRANSACTION HISTORY', style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 11)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _showAllTransactions(context, walletService),
+                child: Text('See All', style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: activities.isEmpty
+              ? Center(child: Text('No transactions yet', style: TextStyle(color: Colors.grey[500])))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: activities.length > 5 ? 5 : activities.length, // Show only 5 in tab
+                  itemBuilder: (context, index) => _buildActivityItem(activities[index]),
+                ),
+        ),
+      ],
+    );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget _buildActivityItem(Map<String, dynamic> activity) {
+    final isBuy = activity['type'] == 'buy';
+    final isYield = activity['type'] == 'yield';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.glassDecoration,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (isYield ? Colors.green : (isBuy ? AppTheme.primaryColor : Colors.red)).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(isYield ? Icons.payments : (isBuy ? Icons.add_circle : Icons.remove_circle),
+              color: isYield ? Colors.green : (isBuy ? AppTheme.primaryColor : Colors.red), size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(activity['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(activity['property']!, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                const SizedBox(height: 2),
+                Text(activity['time']!, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+              ],
+            ),
+          ),
+          Text(activity['amount']!, style: TextStyle(color: activity['type'] == 'sell' ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  void _showAllTransactions(BuildContext context, WalletService walletService) {
+    final transactions = walletService.transactionHistory;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.receipt_long, color: AppTheme.primaryColor),
+                  const SizedBox(width: 12),
+                  const Text('All Transactions', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Text('${transactions.length} total', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12),
+            // Transaction list
+            Expanded(
+              child: transactions.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.receipt_outlined, size: 64, color: Colors.grey[700]),
+                          const SizedBox(height: 16),
+                          Text('No transactions yet', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text('Your transaction history will appear here', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: transactions.length,
+                      itemBuilder: (context, index) {
+                        final t = transactions[index];
+                        return _buildTransactionDetailCard(t);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionDetailCard(TransactionRecord transaction) {
+    final isBuy = transaction.type == TransactionType.buy;
+    final isYield = transaction.type == TransactionType.receive;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.glassDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
@@ -585,19 +799,59 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(activity['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    Text(
+                      isBuy ? 'Purchased ${transaction.fractions} fractions' : 
+                      isYield ? 'Yield received' : 'Sold ${transaction.fractions} fractions',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 4),
-                    Text(activity['property']!, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                    const SizedBox(height: 2),
-                    Text(activity['time']!, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                    Text(transaction.propertyName ?? 'Property', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
                   ],
                 ),
               ),
-              Text(activity['amount']!, style: TextStyle(color: activity['type'] == 'sell' ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    isBuy ? '+${transaction.fractions}' : '\$${transaction.amount.toStringAsFixed(2)}',
+                    style: TextStyle(color: isBuy ? Colors.green : (isYield ? Colors.green : Colors.red), fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  Text(_formatTimeAgo(transaction.timestamp), style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                ],
+              ),
             ],
           ),
-        );
-      },
+          if (transaction.txHash != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tag, color: Colors.grey, size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'TX: ${transaction.txHash!.substring(0, 20)}...',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 11, fontFamily: 'monospace'),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: transaction.txHash!));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('TX Hash copied!')));
+                    },
+                    child: const Icon(Icons.copy, color: AppTheme.primaryColor, size: 16),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
