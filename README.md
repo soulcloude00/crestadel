@@ -1,8 +1,8 @@
-# 🏙️ PropFi (Crestadel)
+# 🏙️ Crestadel
 
 **Real World Asset Tokenization on Cardano**
 
-PropFi is a cutting-edge decentralized application (DApp) that bridges the gap between real estate and blockchain technology. Built on **Cardano** and leveraging **Hydra** for Layer 2 scaling, PropFi allows users to invest in fractionalized real estate assets with near-instant settlement and negligible fees.
+Crestadel is a cutting-edge decentralized application (DApp) that bridges the gap between real estate and blockchain technology. Built on **Cardano** and leveraging **Hydra** for Layer 2 scaling, Crestadel allows users to invest in fractionalized real estate assets with near-instant settlement and negligible fees.
 
 ---
 
@@ -54,7 +54,7 @@ sequenceDiagram
 
 ```mermaid
 mindmap
-  root((PropFi))
+  root((Crestadel))
     Frontend
       Flutter
       Dart
