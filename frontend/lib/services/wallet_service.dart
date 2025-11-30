@@ -619,7 +619,13 @@ class WalletService extends ChangeNotifier {
         DateTime purchaseDate = DateTime.now();
         if (timestamp.isNotEmpty) {
           try {
-            purchaseDate = DateTime.parse(timestamp);
+            // Check if timestamp is numeric (milliseconds since epoch)
+            if (RegExp(r'^\d+$').hasMatch(timestamp)) {
+              final millis = int.parse(timestamp);
+              purchaseDate = DateTime.fromMillisecondsSinceEpoch(millis);
+            } else {
+              purchaseDate = DateTime.parse(timestamp);
+            }
           } catch (e) {
             debugPrint('Could not parse timestamp: $timestamp');
           }
@@ -836,7 +842,7 @@ class WalletService extends ChangeNotifier {
           for (final wId in walletIds) {
             try {
               final wallet = CardanoWallet.values.firstWhere(
-                (w) => w.id == wId,
+                (w) => w.id.toLowerCase() == wId.toLowerCase(),
               );
               if (!available.contains(wallet)) available.add(wallet);
             } catch (_) {}
@@ -897,7 +903,10 @@ class WalletService extends ChangeNotifier {
       final cardano = js_util.getProperty(window, 'cardano');
 
       if (!js_util.hasProperty(cardano, wallet.id)) {
-        throw Exception('${wallet.displayName} wallet not found');
+        throw Exception(
+          '${wallet.displayName} wallet not found in browser. '
+          'Please ensure the extension is installed, enabled, and has permission to run on this site.',
+        );
       }
       final walletObj = js_util.getProperty(cardano, wallet.id);
 
@@ -1152,7 +1161,7 @@ class WalletService extends ChangeNotifier {
     if (amount > maxAllowed) {
       throw Exception(
         'Cannot purchase more than 50% of total fractions ($maxAllowed). '
-        'This prevents single-owner control.'
+        'This prevents single-owner control.',
       );
     }
 
@@ -1328,7 +1337,7 @@ class WalletService extends ChangeNotifier {
       if (amount > maxAllowed) {
         throw Exception(
           'Cannot purchase more than 50% of total fractions ($maxAllowed). '
-          'This prevents single-owner control.'
+          'This prevents single-owner control.',
         );
       }
     }
@@ -1635,8 +1644,9 @@ class WalletService extends ChangeNotifier {
     if (!kIsWeb) return null;
     try {
       final window = js.webWindow;
-      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge')) {
         return null;
+      }
       final bridge = js_util.getProperty(window, 'PropFiBridge');
 
       final promise = js_util.callMethod(bridge, 'initPeerConnect', []);
@@ -1653,8 +1663,9 @@ class WalletService extends ChangeNotifier {
     if (!kIsWeb) return 0.0;
     try {
       final window = js.webWindow;
-      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge')) {
         return 0.0;
+      }
       final bridge = js_util.getProperty(window, 'PropFiBridge');
 
       final promise = js_util.callMethod(bridge, 'fetchCharli3Price', [pair]);
@@ -1671,8 +1682,9 @@ class WalletService extends ChangeNotifier {
     if (!kIsWeb) return {'verified': false};
     try {
       final window = js.webWindow;
-      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge')) {
         return {'verified': false};
+      }
       final bridge = js_util.getProperty(window, 'PropFiBridge');
 
       final promise = js_util.callMethod(bridge, 'verifyOrcfaxAudit', [
@@ -1704,8 +1716,9 @@ class WalletService extends ChangeNotifier {
     if (!kIsWeb) return '';
     try {
       final window = js.webWindow;
-      if (window == null || !js_util.hasProperty(window, 'PropFiBridge'))
+      if (window == null || !js_util.hasProperty(window, 'PropFiBridge')) {
         return '';
+      }
       final bridge = js_util.getProperty(window, 'PropFiBridge');
 
       final promise = js_util.callMethod(bridge, 'generateDunaHash', [

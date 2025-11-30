@@ -108,13 +108,38 @@ window.PropFiBridge = {
   getAvailableWallets: function () {
     const wallets = [];
     if (window.cardano) {
+      console.log('PropFiBridge: window.cardano keys:', Object.keys(window.cardano));
+
+      // Standard check
       for (const key in window.cardano) {
-        if (window.cardano[key].enable && window.cardano[key].name) {
+        if (window.cardano[key] && window.cardano[key].enable) {
           wallets.push(key);
         }
       }
+
+      // Explicit check for Lace (in case it's non-enumerable or late)
+      if (!wallets.includes('lace') && window.cardano.lace) {
+        console.log('PropFiBridge: Found Lace explicitly (was hidden/non-enumerable)');
+        wallets.push('lace');
+      }
+    } else {
+      console.log('PropFiBridge: window.cardano is undefined');
     }
-    return wallets;
+    return [...new Set(wallets)];
+  },
+
+  // Poll for wallets for a few seconds to debug race conditions
+  startWalletPolling: function () {
+    let attempts = 0;
+    const maxAttempts = 10;
+    const interval = setInterval(() => {
+      attempts++;
+      const wallets = this.getAvailableWallets();
+      console.log(`PropFiBridge Polling (${attempts}/${maxAttempts}):`, wallets);
+      if (wallets.includes('lace') || attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 1000);
   },
 
   generatePropertyId: function () {
@@ -695,7 +720,7 @@ window.PropFiBridge = {
    * Verify Orcfax audit trail for a property
    * Fetches the latest fact statement from the Orcfax feed address on Preprod
    */
-  verifyOrcfaxAudit: async function(propertyId) {
+  verifyOrcfaxAudit: async function (propertyId) {
     console.log("Verifying Orcfax audit for", propertyId);
 
     // Orcfax Preprod Feed Address (Example: ADA/USD feed for demo purposes)
@@ -774,7 +799,5 @@ window.PropFiBridge = {
 
 console.log('PropFi Bridge initialized with Blockfrost API', window.PropFiBridge.config);
 
-setTimeout(() => {
-  const wallets = window.PropFiBridge.getAvailableWallets();
-  console.log('PropFi Bridge: Detected wallets after delay:', wallets);
-}, 1000);
+// Start polling for wallets to catch slow-loading extensions like Lace
+window.PropFiBridge.startWalletPolling();
