@@ -12,13 +12,33 @@ The system utilizes a hybrid architecture to ensure scalability and security.
 
 ```mermaid
 graph TD
-    User[User] -->|Interacts| Flutter[Flutter Frontend]
-    Flutter -->|WebSocket| HydraClient[Hydra Client (JS)]
-    HydraClient -->|State Channels| HydraNode[Hydra Node]
-    HydraNode -->|Settlement| Cardano[Cardano L1]
-    Flutter -->|Query| Blockfrost[Blockfrost/Koios]
-    Blockfrost -->|Read Data| Cardano
-```
+    %% Define Styles
+    classDef client fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef l2 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef l1 fill:#311b92,stroke:#000,stroke-width:2px,color:#fff;
+    classDef api fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+
+    subgraph Client_Layer ["📱 Client Side"]
+        User((User)) -->|Interacts| Flutter[Flutter Frontend]
+    end
+
+    subgraph Off_Chain ["⚡ Layer 2 & APIs"]
+        Flutter -.->|WebSocket / JS Bridge| HydraClient[Hydra Client JS]
+        Flutter -->|REST Query| Blockfrost[Blockfrost / Koios]
+        HydraClient <-->|State Channels| HydraNode[Hydra Node]
+    end
+
+    subgraph On_Chain ["🔗 Cardano Layer 1"]
+        HydraNode -->|Settlement / Commit| Cardano[(Cardano L1)]
+        Blockfrost -.->|Read Ledger| Cardano
+    end
+
+    %% Apply Styles
+    class User,Flutter client;
+    class HydraClient,HydraNode l2;
+    class Cardano l1;
+    class Blockfrost api;
+``` 
 
 ---
 
