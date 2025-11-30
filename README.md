@@ -5,6 +5,8 @@
 Crestadel is a cutting-edge decentralized application (DApp) that bridges the gap between real estate and blockchain technology. Built on **Cardano** and leveraging **Hydra** for Layer 2 scaling, Crestadel allows users to invest in fractionalized real estate assets with near-instant settlement and negligible fees.
 
 ---
+Click the link below to watch the demo:
+[**▶️ Watch the Crestadel Walkthrough**](https://github.com/soulcloude00/crestadel/blob/main/Video%20Demonstration/VN20251130_113955.mp4)
 
 ## 🏗️ Architecture
 
