@@ -43,6 +43,7 @@ dependencies:
   
   # PDF generation for certificates
   pdf: ^3.10.8
+  model_viewer_plus: ^1.9.3
 
 dev_dependencies:
   flutter_test:
@@ -67,9 +68,9 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/images/ # Images directory
+    - assets/intro.mp4 # Splash video
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

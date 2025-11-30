@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crestadel - User Flow Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #ffffff;
+            padding: 40px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #94a3b8;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            page-break-inside: avoid;
+        }
+        h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .mermaid {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .description {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0, 212, 255, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #00d4ff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        th {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+        }
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .tech-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .tech-card h4 {
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #64748b;
+        }
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+            .section {
+                border: 1px solid #ddd;
+                background: #f9f9f9;
+            }
+            h1 {
+                color: #1a1a2e;
+                -webkit-text-fill-color: #1a1a2e;
+            }
+            h2 {
+                color: #16213e;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Crestadel</h1>
+        <p class="subtitle">Decentralized Real Estate Syndication on Cardano</p>
+
+        <!-- Section 1: Property Fractionalization -->
+        <div class="section">
+            <h2>1️⃣ Property Fractionalization Flow</h2>
+            <div class="mermaid">
+flowchart TD
+    A[🏠 Property Owner] -->|1. Connect Wallet| B[Nami/Eternl/Lace]
+    B -->|2. List Property| C[Admin Page]
+    C -->|3. Enter Details| D{Validate}
+    D -->|Min 250 ADA ❌| E[Error: Below Minimum]
+    D -->|Valid ✅| F[Mint CIP-68 Tokens]
+    F -->|Reference Token| G[On-Chain Metadata]
+    F -->|User Tokens| H[Owner's Wallet]
+    H -->|4. List for Sale| I[Marketplace]
+    I --> J[🌍 Available for Purchase]
+            </div>
+            <div class="description">
+                <strong>Use Case:</strong> Property owners can tokenize their real estate, splitting it into tradeable fractions. Each property becomes 1000 CIP-68 tokens that can be sold to investors.
+            </div>
+        </div>
+
+        <!-- Section 2: Investment Flow -->
+        <div class="section">
+            <h2>2️⃣ Fractional Investment Flow</h2>
+            <div class="mermaid">
+flowchart TD
+    A[👤 Investor] -->|1. Browse| B[Marketplace]
+    B -->|2. Select Property| C[Property Details]
+    C -->|3. Choose Amount| D{Validate Purchase}
+    D -->|More than 50% ❌| E[Error: Exceeds Limit]
+    D -->|Valid ✅| F[Build Transaction]
+    F -->|4. Sign with Wallet| G[Submit to Blockchain]
+    G -->|5. Atomic Swap| H[Seller Gets Payment]
+    G -->|5. Atomic Swap| I[Buyer Gets Tokens]
+    I --> J[✅ Ownership Transferred]
+            </div>
+            <div class="description">
+                <strong>Use Case:</strong> Investors can buy fractions of properties starting from just 250 ADA. The 50% ownership cap prevents any single investor from controlling the property.
+            </div>
+        </div>
+
+        <!-- Section 3: Syndicate Flow -->
+        <div class="section">
+            <h2>3️⃣ Syndicate Crowdfunding Flow</h2>
+            <div class="mermaid">
+flowchart TD
+    A[Manager Creates Syndicate] -->|Set Target & Deadline| B[Syndicate Contract]
+    B --> C[State: FUNDRAISING]
+    C --> D[Investors Deposit Funds]
+    D --> E{Target Met?}
+    E -->|Yes| F[State: LOCKED]
+    E -->|No + Deadline Passed| G[State: REFUNDED]
+    F --> H[Legal Confirmation]
+    H --> I[State: FINALIZED]
+    I --> J[Seller Gets Payment]
+    I --> K[Investors Get Tokens]
+    G --> L[Investors Claim Refunds]
+            </div>
+            <div class="description">
+                <strong>Use Case:</strong> Multiple investors pool their funds to purchase a property together. If the target isn't met by the deadline, everyone gets refunded automatically.
+            </div>
+        </div>
+
+        <!-- Section 4: Yield Distribution -->
+        <div class="section">
+            <h2>4️⃣ Yield Distribution Flow</h2>
+            <div class="mermaid">
+flowchart TD
+    A[🏢 Property Earns Rent] -->|Monthly| B[Property Manager]
+    B -->|Deposit Yield| C[Yield Treasury]
+    C --> D[Accumulated Yield]
+    D --> E[Token Holders]
+    E -->|Own 10% of Tokens| F[Calculate: 10% of Yield]
+    F -->|Claim| G[Receive Stablecoins]
+            </div>
+            <div class="description">
+                <strong>Use Case:</strong> Rental income is deposited into a treasury contract. Token holders can claim their proportional share anytime. Own 10% of tokens = Get 10% of rent.
+            </div>
+        </div>
+
+        <!-- Section 5: State Machine -->
+        <div class="section">
+            <h2>5️⃣ Syndicate State Machine</h2>
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> Fundraising: Create Syndicate
+    Fundraising --> Fundraising: Deposit
+    Fundraising --> Locked: Target Met
+    Fundraising --> Refunded: Deadline Passed
+    Locked --> Finalized: Legal Confirmed
+    Refunded --> [*]: All Refunded
+    Finalized --> [*]: Tokens Distributed
+            </div>
+            <div class="description">
+                <strong>States:</strong> FUNDRAISING → LOCKED → FINALIZED (success) or REFUNDED (failure). Smart contract enforces valid state transitions only.
+            </div>
+        </div>
+
+        <!-- Section 6: Technology Stack -->
+        <div class="section">
+            <h2>6️⃣ Technology Stack</h2>
+            <div class="tech-grid">
+                <div class="tech-card">
+                    <h4>⛓️ Cardano</h4>
+                    <p>Blockchain</p>
+                </div>
+                <div class="tech-card">
+                    <h4>⚡ Aiken</h4>
+                    <p>Smart Contracts</p>
+                </div>
+                <div class="tech-card">
+                    <h4>📱 Flutter</h4>
+                    <p>Frontend App</p>
+                </div>
+                <div class="tech-card">
+                    <h4>🔧 MeshJS</h4>
+                    <p>Transaction Builder</p>
+                </div>
+                <div class="tech-card">
+                    <h4>🔐 Lucid</h4>
+                    <p>Wallet Connection</p>
+                </div>
+                <div class="tech-card">
+                    <h4>📊 Blockfrost</h4>
+                    <p>Blockchain API</p>
+                </div>
+                <div class="tech-card">
+                    <h4>🔮 Orcfax</h4>
+                    <p>Property Oracle</p>
+                </div>
+                <div class="tech-card">
+                    <h4>☁️ Cloudflare</h4>
+                    <p>Web Hosting</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 7: Quick Reference -->
+        <div class="section">
+            <h2>7️⃣ Quick Reference</h2>
+            <table>
+                <tr>
+                    <th>Action</th>
+                    <th>Contract</th>
+                    <th>What Happens</th>
+                </tr>
+                <tr>
+                    <td>List Property</td>
+                    <td>Fractionalize</td>
+                    <td>Mint 1000 CIP-68 tokens</td>
+                </tr>
+                <tr>
+                    <td>Buy Fraction</td>
+                    <td>Marketplace</td>
+                    <td>Atomic swap: payment ↔ tokens</td>
+                </tr>
+                <tr>
+                    <td>Create Syndicate</td>
+                    <td>Syndicate</td>
+                    <td>Set target, deadline, limits</td>
+                </tr>
+                <tr>
+                    <td>Invest in Syndicate</td>
+                    <td>Syndicate</td>
+                    <td>Deposit stablecoins (min/max enforced)</td>
+                </tr>
+                <tr>
+                    <td>Deposit Rent</td>
+                    <td>Yield Treasury</td>
+                    <td>Manager deposits rental income</td>
+                </tr>
+                <tr>
+                    <td>Claim Rent</td>
+                    <td>Yield Treasury</td>
+                    <td>Holder claims proportional share</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>🌐 <strong>Live at:</strong> https://crestadel.pages.dev</p>
+            <p>📦 <strong>GitHub:</strong> github.com/soulcloude00/crestadel</p>
+            <p>Generated: November 30, 2025</p>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+    </script>
+</body>
+</html>
